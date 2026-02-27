@@ -1,0 +1,2394 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Planet Visualiser</title>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js"
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a2f;
+      --text: #e6eefc;
+      --muted: #9fb0d1;
+      --accent: #7bdff6;
+      --grid: #1f2b4a;
+      --day: #ffd27f;
+      --night: #20324f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      background: radial-gradient(1200px 800px at 20% 10%, #162040, var(--bg));
+      color: var(--text);
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) minmax(320px, 420px);
+      gap: 16px;
+      padding: 16px;
+      min-height: 100vh;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid #1e2b4a;
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    .viewer-split {
+      width: 100%;
+      height: calc(100vh - 32px);
+      min-height: 480px;
+      display: grid;
+      grid-template-rows: 2fr 1fr;
+      gap: 10px;
+    }
+
+    #viewport3d {
+      width: 100%;
+      height: 100%;
+      min-height: 260px;
+      display: block;
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid #223050;
+      background: #0b1224;
+    }
+
+    .view-mode-toggles {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      right: 10px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(11, 18, 36, 0.85);
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #223050;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .view-mode-toggles button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #223050;
+      background: #152238;
+      color: var(--muted);
+      font-size: 11px;
+      cursor: pointer;
+      flex: 1;
+    }
+
+    .view-mode-toggles button.active {
+      background: #2a3f66;
+      border-color: #3d5a8c;
+      color: var(--text);
+    }
+
+    #orbitPane {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 12px;
+      align-items: start;
+      border-radius: 14px;
+      border: 1px solid #223050;
+      background: #0b1224;
+      padding: 8px;
+    }
+
+    #orbitMini {
+      width: 180px;
+      height: 180px;
+      border-radius: 10px;
+      border: 1px solid #223050;
+      background: rgba(7, 12, 24, 0.82);
+    }
+
+    .orbital-params {
+      min-width: 0;
+    }
+
+    .orbital-params h2 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      color: var(--text);
+      letter-spacing: 0.02em;
+    }
+
+    .orbit-readout {
+      color: var(--text);
+      font-size: 12px;
+      padding-top: 4px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      letter-spacing: 0.02em;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+      margin-bottom: 12px;
+    }
+
+    .controls > label:last-of-type {
+      grid-column: 1 / -1;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      font-size: 11px;
+      color: var(--muted);
+      gap: 4px;
+    }
+
+    label.slider-inline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(90px, 1.2fr);
+      align-items: center;
+      gap: 4px 6px;
+    }
+
+    .range-row {
+      display: grid;
+      grid-template-columns: 1fr 52px;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .range-row.single {
+      grid-template-columns: 1fr;
+    }
+
+    .controls input[type="range"] {
+      min-width: 0;
+      padding: 0;
+    }
+
+    .controls input[type="number"] {
+      padding: 4px 6px;
+      font-size: 12px;
+      min-width: 0;
+    }
+
+    input, select {
+      background: #0f162a;
+      color: var(--text);
+      border: 1px solid #223050;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
+
+    button {
+      margin-top: 8px;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #041019;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #info {
+      margin: 12px 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    #plot {
+      width: 100%;
+      height: 220px;
+      border-radius: 12px;
+      background: #0b1224;
+      border: 1px solid #1d2b4a;
+    }
+
+    #sunPathPlot {
+      width: 100%;
+      max-width: 380px;
+      aspect-ratio: 1;
+      border-radius: 12px;
+      background: #0b1224;
+      border: 1px solid #1d2b4a;
+    }
+
+    .legend {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .texture-editor {
+      margin: 12px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .texture-select-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .texture-select-row select {
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid #1d2b4a;
+      background: #0b1224;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    .terrain-drawer-container {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 8px;
+      border: 1px solid #1d2b4a;
+      background: rgba(11, 18, 36, 0.6);
+    }
+
+    .terrain-drawer-canvas-wrap {
+      position: relative;
+      display: inline-block;
+      max-width: 360px;
+      clip-path: ellipse(50% 50% at 50% 50%);
+      border: 1px solid #223050;
+      border-radius: 8px;
+    }
+
+    #terrainDrawer {
+      width: 100%;
+      max-width: 360px;
+      height: auto;
+      aspect-ratio: 2 / 1;
+      cursor: crosshair;
+      display: block;
+    }
+
+    #terrainDrawerGuides {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .terrain-drawer-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .terrain-drawer-buttons button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #223050;
+      background: #152238;
+      color: var(--text);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .terrain-drawer-buttons button.active {
+      background: #2a3f66;
+      border-color: #3d5a8c;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      background: var(--day);
+    }
+
+    .swatch.night { background: var(--night); }
+
+    @media (max-width: 900px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .viewer-split {
+        height: auto;
+        grid-template-rows: minmax(300px, 55vh) minmax(230px, auto);
+      }
+
+      #orbitPane {
+        grid-template-columns: 1fr;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      label.slider-inline {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="panel">
+      <div class="viewer-split">
+        <div id="viewport3d">
+          <div class="view-mode-toggles">
+            <button type="button" id="viewModeTerrain" class="active" title="Raw terrain only">Terrain</button>
+            <button type="button" id="viewModeTemp" title="Terrain with 50% temperature">Temp</button>
+            <button type="button" id="viewModeSunlight" title="Sunlight on sphere">Sunlight</button>
+            <button type="button" id="viewModeCurrents" title="Ocean currents">Currents</button>
+          </div>
+        </div>
+        <div id="orbitPane">
+          <canvas id="orbitMini" width="180" height="180"></canvas>
+          <div class="orbital-params">
+            <h2>Orbital Parameters</h2>
+            <div class="controls">
+              <label class="slider-inline">
+                Orbital eccentricity: <span id="orbitEccentricityValue">0.00</span>
+                <div class="range-row">
+                  <input id="orbitEccentricitySlider" type="range" min="0" max="0.9" value="0" step="0.01" />
+                  <input id="orbitEccentricityInput" type="number" min="0" max="0.9" value="0" step="0.01" />
+                </div>
+              </label>
+              <label>
+                Obliquity (deg)
+                <input id="obliquity" type="number" value="0" min="-90" max="90" step="0.1" />
+              </label>
+              <label class="slider-inline">
+                Axial spin rate (rotations / year): <span id="axialSpinValue">1.00</span>
+                <div class="range-row">
+                  <input id="axialSpinSlider" type="range" min="-1" max="4" value="1" step="0.01" />
+                  <input id="axialSpinInput" type="number" min="-1" max="4" value="1" step="0.01" />
+                </div>
+              </label>
+              <label class="slider-inline">
+                Starting texture anomaly (deg): <span id="textureAnomalyValue">0</span>
+                <div class="range-row single">
+                  <input id="textureAnomalySlider" type="range" min="-180" max="180" value="0" step="1" />
+                </div>
+              </label>
+              <label class="slider-inline">
+                Heating/Cooling ratio: <span id="heatingCoolingRatioValue">6.00</span>
+                <div class="range-row">
+                  <input id="heatingCoolingRatioSlider" type="range" min="0" max="20" value="6" step="0.1" />
+                  <input id="heatingCoolingRatioInput" type="number" min="0" max="20" value="6" step="0.1" />
+                </div>
+              </label>
+              <label class="slider-inline">
+                Effective capacitance: <span id="heatCapacitanceValue">0.10</span>
+                <div class="range-row">
+                  <input id="heatCapacitanceSlider" type="range" min="0.02" max="10" value="0.1" step="0.01" />
+                  <input id="heatCapacitanceInput" type="number" min="0.02" max="10" value="0.1" step="0.01" />
+                </div>
+              </label>
+              <label class="slider-inline">
+                Conductance: <span id="conductanceValue">0.80</span>
+                <div class="range-row">
+                  <input id="conductanceSlider" type="range" min="0" max="20" value="0.8" step="0.1" />
+                  <input id="conductanceInput" type="number" min="0" max="20" value="0.8" step="0.1" />
+                </div>
+              </label>
+              <label style="grid-column: 1 / -1;">
+                <button id="pauseButton" type="button">Pause Simulation</button>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h1>Day / Night Cycle</h1>
+      <div id="info">Click a point on the planet to select a latitude/longitude.</div>
+      <div class="texture-editor">
+        <div id="terrainDrawerContainer" class="terrain-drawer-container">
+          <div class="terrain-drawer-canvas-wrap">
+            <canvas id="terrainDrawer" width="360" height="180" title="Mollweide: paint land or ocean"></canvas>
+            <canvas id="terrainDrawerGuides" width="360" height="180" class="terrain-drawer-guides"></canvas>
+          </div>
+          <div class="terrain-drawer-buttons">
+            <button type="button" id="brushLandBtn">Paint land</button>
+            <button type="button" id="brushOceanBtn">Paint ocean</button>
+            <button type="button" id="allWaterBtn">All water</button>
+            <button type="button" id="allLandBtn">All land</button>
+            <button type="button" id="saveTextureBtn">Save texture</button>
+            <button type="button" id="loadTextureBtn">Load texture</button>
+            <input type="file" id="loadTextureInput" accept="image/*" style="display: none;" />
+          </div>
+        </div>
+      </div>
+      <canvas id="plot" width="480" height="220"></canvas>
+      <canvas id="sunPathPlot" width="380" height="380"></canvas>
+      <div class="legend">
+        <span><span class="swatch"></span>Day</span>
+        <span><span class="swatch night"></span>Night</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/controls/OrbitControls.js";
+
+    const viewport3d = document.getElementById("viewport3d");
+    const orbitMini = document.getElementById("orbitMini");
+    const orbitCtx = orbitMini.getContext("2d");
+    const info = document.getElementById("info");
+    const plot = document.getElementById("plot");
+    const ctx = plot.getContext("2d");
+    const sunPathPlot = document.getElementById("sunPathPlot");
+    const sunPathCtx = sunPathPlot.getContext("2d");
+    const obliquityInput = document.getElementById("obliquity");
+    const orbitEccentricitySlider = document.getElementById("orbitEccentricitySlider");
+    const orbitEccentricityInput = document.getElementById("orbitEccentricityInput");
+    const orbitEccentricityValue = document.getElementById("orbitEccentricityValue");
+    const axialSpinSlider = document.getElementById("axialSpinSlider");
+    const axialSpinInput = document.getElementById("axialSpinInput");
+    const axialSpinValue = document.getElementById("axialSpinValue");
+    const textureAnomalySlider = document.getElementById("textureAnomalySlider");
+    const textureAnomalyValue = document.getElementById("textureAnomalyValue");
+    const heatingCoolingRatioSlider = document.getElementById("heatingCoolingRatioSlider");
+    const heatingCoolingRatioInput = document.getElementById("heatingCoolingRatioInput");
+    const heatingCoolingRatioValue = document.getElementById("heatingCoolingRatioValue");
+    const heatCapacitanceSlider = document.getElementById("heatCapacitanceSlider");
+    const heatCapacitanceInput = document.getElementById("heatCapacitanceInput");
+    const heatCapacitanceValue = document.getElementById("heatCapacitanceValue");
+    const conductanceSlider = document.getElementById("conductanceSlider");
+    const conductanceInput = document.getElementById("conductanceInput");
+    const conductanceValue = document.getElementById("conductanceValue");
+    const pauseButton = document.getElementById("pauseButton");
+    const viewModeTerrain = document.getElementById("viewModeTerrain");
+    const viewModeTemp = document.getElementById("viewModeTemp");
+    const viewModeSunlight = document.getElementById("viewModeSunlight");
+    const viewModeCurrents = document.getElementById("viewModeCurrents");
+    const terrainDrawerContainer = document.getElementById("terrainDrawerContainer");
+    const terrainDrawer = document.getElementById("terrainDrawer");
+    const terrainDrawerGuides = document.getElementById("terrainDrawerGuides");
+    const brushLandBtn = document.getElementById("brushLandBtn");
+    const brushOceanBtn = document.getElementById("brushOceanBtn");
+    const saveTextureBtn = document.getElementById("saveTextureBtn");
+    const loadTextureBtn = document.getElementById("loadTextureBtn");
+    const loadTextureInput = document.getElementById("loadTextureInput");
+    const allWaterBtn = document.getElementById("allWaterBtn");
+    const allLandBtn = document.getElementById("allLandBtn");
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0b1020);
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+    camera.position.set(3.2, 1.6, 3.2);
+    camera.lookAt(0, 0, 0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.domElement.style.position = "absolute";
+    renderer.domElement.style.inset = "0";
+    renderer.domElement.style.zIndex = "1";
+    renderer.domElement.style.width = "100%";
+    renderer.domElement.style.height = "100%";
+    viewport3d.appendChild(renderer.domElement);
+
+    const baseSphereGeometry = new THREE.IcosahedronGeometry(1, 9);
+    const sphereGeometry = baseSphereGeometry.toNonIndexed();
+    const BASE_COOLING_RATE = 2.0;
+    let heatingCoolingRatio = 6.0;
+    let heatCapacitance = 0.1;
+    let conductance = 0.8;
+    const TEMP_MIN = 0.0;
+    const TEMP_MAX = 100.0;
+    const INITIAL_TEMP = 10.0;
+    const TEMP_RANGE = TEMP_MAX - TEMP_MIN;
+    const DISPLAY_MEAN_TEMP_BASE_C = 16.0;
+    const HEATING_RATIO_REFERENCE = 6.0;
+    const HEATING_RATIO_NONLINEAR_EXP = 0.6;
+    const MAX_THERMAL_FRAME_DT = 0.1;
+    const MAX_THERMAL_SUBSTEP_DT = 0.02;
+    const DIFFUSION_STABILITY_TARGET = 0.2;
+    const vertexCount = sphereGeometry.attributes.position.count;
+    const triangleCount = vertexCount / 3;
+    const triangleTemps = new Float32Array(triangleCount);
+    const temperatureScratch = new Float32Array(triangleCount);
+    const heatingScratch = new Float32Array(triangleCount);
+    triangleTemps.fill(INITIAL_TEMP);
+    const vertexColors = new Float32Array(vertexCount * 4);
+    const colorAttribute = new THREE.BufferAttribute(vertexColors, 4);
+    sphereGeometry.setAttribute("color", colorAttribute);
+    const positions = sphereGeometry.attributes.position;
+    const localFaceNormals = new Array(triangleCount);
+    const va = new THREE.Vector3();
+    const vb = new THREE.Vector3();
+    const vc = new THREE.Vector3();
+    const e1 = new THREE.Vector3();
+    const e2 = new THREE.Vector3();
+    for (let t = 0; t < triangleCount; t++) {
+      const i0 = t * 3;
+      const i1 = i0 + 1;
+      const i2 = i0 + 2;
+      va.set(positions.getX(i0), positions.getY(i0), positions.getZ(i0));
+      vb.set(positions.getX(i1), positions.getY(i1), positions.getZ(i1));
+      vc.set(positions.getX(i2), positions.getY(i2), positions.getZ(i2));
+      e1.copy(vb).sub(va);
+      e2.copy(vc).sub(va);
+      localFaceNormals[t] = new THREE.Vector3().crossVectors(e1, e2).normalize();
+    }
+
+    const triangleNeighbors = Array.from({ length: triangleCount }, () => []);
+    const edgeToTriangles = new Map();
+    const quantize = (value) => Math.round(value * 1e6);
+    const vertexKey = (index) => `${quantize(positions.getX(index))},${quantize(positions.getY(index))},${quantize(positions.getZ(index))}`;
+    const addEdge = (aKey, bKey, triangleIndex) => {
+      const edgeKey = aKey < bKey ? `${aKey}|${bKey}` : `${bKey}|${aKey}`;
+      if (!edgeToTriangles.has(edgeKey)) edgeToTriangles.set(edgeKey, []);
+      edgeToTriangles.get(edgeKey).push(triangleIndex);
+    };
+    for (let t = 0; t < triangleCount; t++) {
+      const i0 = t * 3;
+      const i1 = i0 + 1;
+      const i2 = i0 + 2;
+      const k0 = vertexKey(i0);
+      const k1 = vertexKey(i1);
+      const k2 = vertexKey(i2);
+      addEdge(k0, k1, t);
+      addEdge(k1, k2, t);
+      addEdge(k2, k0, t);
+    }
+    edgeToTriangles.forEach((triangles) => {
+      for (let i = 0; i < triangles.length; i++) {
+        for (let j = i + 1; j < triangles.length; j++) {
+          const a = triangles[i];
+          const b = triangles[j];
+          if (!triangleNeighbors[a].includes(b)) triangleNeighbors[a].push(b);
+          if (!triangleNeighbors[b].includes(a)) triangleNeighbors[b].push(a);
+        }
+      }
+    });
+    const sphereMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      wireframe: false,
+      vertexColors: true,
+      transparent: true,
+    });
+    let earthOverlay = null;
+    const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    scene.add(sphere);
+    const OCEAN_COLOR = { r: 0.2, g: 0.4, b: 0.7 };
+    const LAND_COLOR = { r: 0.45, g: 0.35, b: 0.25 };
+    const TERRAIN_BUFFER_W = 360;
+    const TERRAIN_BUFFER_H = 180;
+    const terrainDataBuffer = document.createElement("canvas");
+    terrainDataBuffer.width = TERRAIN_BUFFER_W;
+    terrainDataBuffer.height = TERRAIN_BUFFER_H;
+    const terrainCanvasTexture = new THREE.CanvasTexture(terrainDataBuffer);
+    terrainCanvasTexture.colorSpace = THREE.SRGBColorSpace;
+    terrainCanvasTexture.wrapS = THREE.RepeatWrapping;
+    terrainCanvasTexture.wrapT = THREE.RepeatWrapping;
+    terrainCanvasTexture.repeat.set(-1, 1);
+    terrainCanvasTexture.offset.set(0.5, 0);
+    new THREE.TextureLoader().load("defaultTexture.jpeg", (tex) => {
+      const ctx = terrainDataBuffer.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(tex.image, 0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      terrainDrawer._initialized = true;
+      renderTerrainDrawerMollweide();
+      applyTerrainToPlanet();
+    });
+    earthOverlay = new THREE.Mesh(
+      sphereGeometry,
+      new THREE.MeshBasicMaterial({
+        map: terrainCanvasTexture,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+      })
+    );
+    earthOverlay.scale.setScalar(1.001);
+    sphere.add(earthOverlay);
+
+    const SUNLIGHT_TEX_W = 360;
+    const SUNLIGHT_TEX_H = 180;
+    const sunlightCanvas = document.createElement("canvas");
+    sunlightCanvas.width = SUNLIGHT_TEX_W;
+    sunlightCanvas.height = SUNLIGHT_TEX_H;
+    const sunlightTexture = new THREE.CanvasTexture(sunlightCanvas);
+    sunlightTexture.colorSpace = THREE.SRGBColorSpace;
+    sunlightTexture.wrapS = THREE.RepeatWrapping;
+    sunlightTexture.wrapT = THREE.RepeatWrapping;
+    sunlightTexture.repeat.set(-1, 1);
+    sunlightTexture.offset.set(0.5, 0);
+    const sunlightOverlay = new THREE.Mesh(
+      sphereGeometry,
+      new THREE.MeshBasicMaterial({
+        map: sunlightTexture,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+      })
+    );
+    sunlightOverlay.scale.setScalar(1.002);
+    sunlightOverlay.visible = false;
+    sphere.add(sunlightOverlay);
+
+    const CURRENTS_TEX_W = 360;
+    const CURRENTS_TEX_H = 180;
+    const currentsCanvas = document.createElement("canvas");
+    currentsCanvas.width = CURRENTS_TEX_W;
+    currentsCanvas.height = CURRENTS_TEX_H;
+    const currentsTexture = new THREE.CanvasTexture(currentsCanvas);
+    currentsTexture.colorSpace = THREE.SRGBColorSpace;
+    currentsTexture.wrapS = THREE.RepeatWrapping;
+    currentsTexture.wrapT = THREE.RepeatWrapping;
+    currentsTexture.repeat.set(-1, 1);
+    currentsTexture.offset.set(0.5, 0);
+    const currentsOverlay = new THREE.Mesh(
+      sphereGeometry,
+      new THREE.MeshBasicMaterial({
+        map: currentsTexture,
+        transparent: true,
+        opacity: 1,
+        depthWrite: false,
+      })
+    );
+    currentsOverlay.scale.setScalar(1.002);
+    currentsOverlay.visible = false;
+    sphere.add(currentsOverlay);
+
+    function buildOceanCurrentsTexture() {
+      const ctx = currentsCanvas.getContext("2d");
+      if (!ctx) return;
+      ctx.fillStyle = "rgba(0,0,0,0)";
+      ctx.fillRect(0, 0, CURRENTS_TEX_W, CURRENTS_TEX_H);
+      if (terrainDrawer._initialized !== true) return;
+      const bufImg = terrainDataBuffer.getContext("2d").getImageData(0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      const bufData = bufImg.data;
+      const oceanR = Math.round(OCEAN_COLOR.r * 255);
+      const oceanG = Math.round(OCEAN_COLOR.g * 255);
+      const oceanB = Math.round(OCEAN_COLOR.b * 255);
+      const pixelIsOcean = (bpx, bpy) => {
+        const px = Math.max(0, Math.min(TERRAIN_BUFFER_W - 1, bpx));
+        const py = Math.max(0, Math.min(TERRAIN_BUFFER_H - 1, bpy));
+        const i = (py * TERRAIN_BUFFER_W + px) * 4;
+        const r = bufData[i];
+        const g = bufData[i + 1];
+        const b = bufData[i + 2];
+        return Math.abs(r - oceanR) + Math.abs(g - oceanG) + Math.abs(b - oceanB) < 80;
+      };
+      const whiteAlpha = Math.round(0.5 * 255);
+      const outImg = ctx.createImageData(CURRENTS_TEX_W, CURRENTS_TEX_H);
+      const outData = outImg.data;
+      for (let py = 0; py < CURRENTS_TEX_H; py++) {
+        for (let px = 0; px < CURRENTS_TEX_W; px++) {
+          const bpx = Math.floor(px * TERRAIN_BUFFER_W / CURRENTS_TEX_W);
+          const bpy = Math.floor(py * TERRAIN_BUFFER_H / CURRENTS_TEX_H);
+          if (pixelIsOcean(bpx, bpy)) {
+            const i = (py * CURRENTS_TEX_W + px) * 4;
+            outData[i] = 255;
+            outData[i + 1] = 255;
+            outData[i + 2] = 255;
+            outData[i + 3] = whiteAlpha;
+          }
+        }
+      }
+      ctx.putImageData(outImg, 0, 0);
+      currentsTexture.needsUpdate = true;
+    }
+
+    function updateSunlightTexture() {
+      const sunLocal = sunDirection.clone().applyQuaternion(sphere.quaternion.clone().invert()).normalize();
+      const ctx = sunlightCanvas.getContext("2d");
+      if (!ctx) return;
+      const img = ctx.createImageData(SUNLIGHT_TEX_W, SUNLIGHT_TEX_H);
+      const data = img.data;
+      for (let py = 0; py < SUNLIGHT_TEX_H; py++) {
+        for (let px = 0; px < SUNLIGHT_TEX_W; px++) {
+          const lonRad = (px / SUNLIGHT_TEX_W - 0.5) * 2 * Math.PI;
+          const latRad = (0.5 - py / SUNLIGHT_TEX_H) * Math.PI;
+          const nx = Math.cos(latRad) * Math.cos(lonRad);
+          const ny = Math.sin(latRad);
+          const nz = Math.cos(latRad) * Math.sin(lonRad);
+          const light = Math.max(0, nx * sunLocal.x + ny * sunLocal.y + nz * sunLocal.z);
+          const i = (py * SUNLIGHT_TEX_W + px) * 4;
+          data[i] = 255;
+          data[i + 1] = 235;
+          data[i + 2] = 120;
+          data[i + 3] = Math.round(light * 255);
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      sunlightTexture.needsUpdate = true;
+    }
+
+    let viewMode = "terrain";
+    function applyViewMode() {
+      sunlightOverlay.visible = false;
+      currentsOverlay.visible = false;
+      if (viewMode === "terrain") {
+        earthOverlay.material.opacity = 1;
+        earthOverlay.visible = true;
+        sphereMaterial.vertexColors = false;
+        sphereMaterial.color.setHex(0xffffff);
+      } else if (viewMode === "temp") {
+        earthOverlay.material.opacity = 0.5;
+        earthOverlay.visible = true;
+        sphereMaterial.vertexColors = true;
+      } else if (viewMode === "sunlight") {
+        earthOverlay.material.opacity = 1;
+        earthOverlay.visible = true;
+        sphereMaterial.vertexColors = false;
+        sphereMaterial.color.setHex(0xffffff);
+        sunlightOverlay.visible = true;
+        updateSunlightTexture();
+      } else {
+        earthOverlay.material.opacity = 1;
+        earthOverlay.visible = true;
+        sphereMaterial.vertexColors = false;
+        sphereMaterial.color.setHex(0xffffff);
+        currentsOverlay.visible = true;
+        buildOceanCurrentsTexture();
+      }
+    }
+
+    const MOLLWEIDE_R = Math.SQRT2;
+    function mollweideForward(lonRad, latRad) {
+      const thetaTol = 1e-7;
+      let theta = latRad;
+      for (let i = 0; i < 25; i++) {
+        const d = (2 * theta + Math.sin(2 * theta) - Math.PI * Math.sin(latRad)) / (2 + 2 * Math.cos(2 * theta));
+        theta -= d;
+        if (Math.abs(d) < thetaTol) break;
+      }
+      const x = (2 * MOLLWEIDE_R / Math.PI) * lonRad * Math.cos(theta);
+      const y = MOLLWEIDE_R * Math.sin(theta);
+      return { x, y };
+    }
+
+    function mollweideInverse(x, y) {
+      const theta = Math.asin(Math.max(-1, Math.min(1, y / MOLLWEIDE_R)));
+      const lat = Math.asin(Math.max(-1, Math.min(1, (2 * theta + Math.sin(2 * theta)) / Math.PI)));
+      const cosTheta = Math.cos(theta);
+      const lon = Math.abs(cosTheta) < 1e-10 ? 0 : (Math.PI * x) / (2 * MOLLWEIDE_R * cosTheta);
+      return { lon, lat };
+    }
+
+    function mollweideToCanvas(projX, projY, cw, ch) {
+      const scaleX = (cw / 2) / (2 * MOLLWEIDE_R);
+      const scaleY = (ch / 2) / MOLLWEIDE_R;
+      const scale = Math.min(scaleX, scaleY);
+      return {
+        x: cw / 2 - projX * scale,
+        y: ch / 2 - projY * scale
+      };
+    }
+
+    function canvasToMollweide(cx, cy, cw, ch) {
+      const scaleX = (cw / 2) / (2 * MOLLWEIDE_R);
+      const scaleY = (ch / 2) / MOLLWEIDE_R;
+      const scale = Math.min(scaleX, scaleY);
+      return {
+        x: (cw / 2 - cx) / scale,
+        y: -(cy - ch / 2) / scale
+      };
+    }
+
+    const MOLLWEIDE_PAINT_BUFFER = 1.06;
+    function isInsideMollweideEllipse(projX, projY) {
+      const u = projX / (2 * MOLLWEIDE_R);
+      const v = projY / MOLLWEIDE_R;
+      return u * u + v * v <= 1;
+    }
+
+    function isInsideMollweideEllipseForPaint(projX, projY) {
+      const u = projX / (2 * MOLLWEIDE_R);
+      const v = projY / MOLLWEIDE_R;
+      return u * u + v * v <= MOLLWEIDE_PAINT_BUFFER * MOLLWEIDE_PAINT_BUFFER;
+    }
+
+    function sampleTerrainAtLonLat(lonRad, latRad) {
+      const img = terrainDataBuffer.getContext("2d").getImageData(0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      const data = img.data;
+      const u = ((lonRad / (2 * Math.PI)) + 0.5) * TERRAIN_BUFFER_W;
+      const v = (0.5 - latRad / Math.PI) * TERRAIN_BUFFER_H;
+      const px = Math.floor(Math.max(0, Math.min(TERRAIN_BUFFER_W - 1, u)));
+      const py = Math.floor(Math.max(0, Math.min(TERRAIN_BUFFER_H - 1, v)));
+      const i = (py * TERRAIN_BUFFER_W + px) * 4;
+      return [data[i], data[i + 1], data[i + 2]];
+    }
+
+    function setTerrainAtLonLat(data, lonRad, latRad, r, g, b) {
+      const u = ((lonRad / (2 * Math.PI)) + 0.5) * TERRAIN_BUFFER_W;
+      const v = (0.5 - latRad / Math.PI) * TERRAIN_BUFFER_H;
+      const px = Math.floor(Math.max(0, Math.min(TERRAIN_BUFFER_W - 1, u)));
+      const py = Math.floor(Math.max(0, Math.min(TERRAIN_BUFFER_H - 1, v)));
+      const i = (py * TERRAIN_BUFFER_W + px) * 4;
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+    }
+
+    function renderTerrainDrawerMollweide() {
+      const cw = terrainDrawer.width;
+      const ch = terrainDrawer.height;
+      const ctx = terrainDrawer.getContext("2d");
+      const bufCtx = terrainDataBuffer.getContext("2d");
+      const bufImg = bufCtx.getImageData(0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      const bufData = bufImg.data;
+      const outImg = ctx.createImageData(cw, ch);
+      const outData = outImg.data;
+      const bgR = 11, bgG = 18, bgB = 36;
+      for (let i = 0; i < outData.length; i += 4) {
+        outData[i] = bgR;
+        outData[i + 1] = bgG;
+        outData[i + 2] = bgB;
+        outData[i + 3] = 255;
+      }
+      for (let py = 0; py < ch; py++) {
+        for (let px = 0; px < cw; px++) {
+          const { x: projX, y: projY } = canvasToMollweide(px, py, cw, ch);
+          if (!isInsideMollweideEllipse(projX, projY)) continue;
+          const { lon, lat } = mollweideInverse(projX, projY);
+          const u = ((lon / (2 * Math.PI)) + 0.5) * TERRAIN_BUFFER_W;
+          const v = (0.5 - lat / Math.PI) * TERRAIN_BUFFER_H;
+          const bpx = Math.floor(Math.max(0, Math.min(TERRAIN_BUFFER_W - 1, u)));
+          const bpy = Math.floor(Math.max(0, Math.min(TERRAIN_BUFFER_H - 1, v)));
+          const bi = (bpy * TERRAIN_BUFFER_W + bpx) * 4;
+          const oi = (py * cw + px) * 4;
+          outData[oi] = bufData[bi];
+          outData[oi + 1] = bufData[bi + 1];
+          outData[oi + 2] = bufData[bi + 2];
+        }
+      }
+      ctx.putImageData(outImg, 0, 0);
+    }
+
+    function generateRandomTerrain50_50() {
+      const w = TERRAIN_BUFFER_W;
+      const h = TERRAIN_BUFFER_H;
+      const total = w * h;
+      const targetLand = Math.floor(total * 0.5);
+      const ctx = terrainDataBuffer.getContext("2d");
+      if (!ctx) return;
+      ctx.fillStyle = `rgb(${Math.round(OCEAN_COLOR.r * 255)}, ${Math.round(OCEAN_COLOR.g * 255)}, ${Math.round(OCEAN_COLOR.b * 255)})`;
+      ctx.fillRect(0, 0, w, h);
+      const img = ctx.getImageData(0, 0, w, h);
+      const data = img.data;
+      const landPixels = [];
+      const ellipses = [];
+      const numBlobs = 8 + Math.floor(Math.random() * 6);
+      for (let i = 0; i < numBlobs; i++) {
+        ellipses.push({
+          cx: Math.random() * w,
+          cy: Math.random() * h,
+          rx: 45 + Math.random() * 80,
+          ry: 35 + Math.random() * 60,
+        });
+      }
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          let insideAny = false;
+          for (const e of ellipses) {
+            const dx = (px - e.cx) / e.rx;
+            const dy = (py - e.cy) / e.ry;
+            if (dx * dx + dy * dy <= 1) {
+              insideAny = true;
+              break;
+            }
+          }
+          if (insideAny) landPixels.push(px + py * w);
+        }
+      }
+      while (landPixels.length > targetLand) {
+        const idx = Math.floor(Math.random() * landPixels.length);
+        landPixels.splice(idx, 1);
+      }
+      for (const idx of landPixels) {
+        const i = idx * 4;
+        data[i] = Math.round(LAND_COLOR.r * 255);
+        data[i + 1] = Math.round(LAND_COLOR.g * 255);
+        data[i + 2] = Math.round(LAND_COLOR.b * 255);
+      }
+      ctx.putImageData(img, 0, 0);
+    }
+
+    function applyTerrainToPlanet() {
+      terrainCanvasTexture.needsUpdate = true;
+      if (earthOverlay) {
+        earthOverlay.material.map = terrainCanvasTexture;
+        earthOverlay.material.needsUpdate = true;
+      }
+      if (viewMode === "currents") buildOceanCurrentsTexture();
+    }
+
+    let terrainBrushMode = "land";
+    const BRUSH_RADIUS = 8;
+    let isTerrainDrawing = false;
+
+    function terrainDrawerMouseDown(e) {
+      isTerrainDrawing = true;
+      terrainDrawer.setPointerCapture(e.pointerId);
+      terrainDrawerPaint(e);
+    }
+
+    function terrainDrawerMouseMove(e) {
+      if (!isTerrainDrawing) return;
+      terrainDrawerPaint(e);
+    }
+
+    function terrainDrawerMouseUp(e) {
+      if (isTerrainDrawing && e.pointerId !== undefined) {
+        terrainDrawer.releasePointerCapture(e.pointerId);
+      }
+      isTerrainDrawing = false;
+    }
+
+    function terrainDrawerPaint(e) {
+      const rect = terrainDrawer.getBoundingClientRect();
+      const scaleX = terrainDrawer.width / rect.width;
+      const scaleY = terrainDrawer.height / rect.height;
+      const cx = (e.clientX - rect.left) * scaleX;
+      const cy = (e.clientY - rect.top) * scaleY;
+      const cw = terrainDrawer.width;
+      const ch = terrainDrawer.height;
+      const { x: projX, y: projY } = canvasToMollweide(cx, cy, cw, ch);
+      if (!isInsideMollweideEllipseForPaint(projX, projY)) return;
+      const { lon: centerLon, lat: centerLat } = mollweideInverse(projX, projY);
+      const centerBpx = Math.floor(((centerLon / (2 * Math.PI)) + 0.5) * TERRAIN_BUFFER_W);
+      const centerBpy = Math.floor((0.5 - centerLat / Math.PI) * TERRAIN_BUFFER_H);
+      const margin = Math.ceil(Math.max(TERRAIN_BUFFER_W, TERRAIN_BUFFER_H) * 0.2);
+      const bpxMin = Math.max(0, centerBpx - margin);
+      const bpxMax = Math.min(TERRAIN_BUFFER_W - 1, centerBpx + margin);
+      const bpyMin = Math.max(0, centerBpy - margin);
+      const bpyMax = Math.min(TERRAIN_BUFFER_H - 1, centerBpy + margin);
+      const r = terrainBrushMode === "land" ? Math.round(LAND_COLOR.r * 255) : Math.round(OCEAN_COLOR.r * 255);
+      const g = terrainBrushMode === "land" ? Math.round(LAND_COLOR.g * 255) : Math.round(OCEAN_COLOR.g * 255);
+      const b = terrainBrushMode === "land" ? Math.round(LAND_COLOR.b * 255) : Math.round(OCEAN_COLOR.b * 255);
+      const bufCtx = terrainDataBuffer.getContext("2d");
+      const img = bufCtx.getImageData(0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      const data = img.data;
+      const brushR2 = BRUSH_RADIUS * BRUSH_RADIUS;
+      for (let bpy = bpyMin; bpy <= bpyMax; bpy++) {
+        for (let bpx = bpxMin; bpx <= bpxMax; bpx++) {
+          const lonRad = (bpx / TERRAIN_BUFFER_W - 0.5) * 2 * Math.PI;
+          const latRad = (0.5 - bpy / TERRAIN_BUFFER_H) * Math.PI;
+          const { x: pProjX, y: pProjY } = mollweideForward(lonRad, latRad);
+          if (!isInsideMollweideEllipseForPaint(pProjX, pProjY)) continue;
+          const { x: px, y: py } = mollweideToCanvas(pProjX, pProjY, cw, ch);
+          const dist2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+          if (dist2 > brushR2) continue;
+          const i = (bpy * TERRAIN_BUFFER_W + bpx) * 4;
+          data[i] = r;
+          data[i + 1] = g;
+          data[i + 2] = b;
+        }
+      }
+      bufCtx.putImageData(img, 0, 0);
+      renderTerrainDrawerMollweide();
+      applyTerrainToPlanet();
+    }
+
+    terrainDrawer.addEventListener("pointerdown", terrainDrawerMouseDown);
+    terrainDrawer.addEventListener("pointermove", terrainDrawerMouseMove);
+    terrainDrawer.addEventListener("pointerup", terrainDrawerMouseUp);
+    terrainDrawer.addEventListener("pointerleave", terrainDrawerMouseUp);
+    brushLandBtn.addEventListener("click", () => {
+      terrainBrushMode = "land";
+      brushLandBtn.classList.add("active");
+      brushOceanBtn.classList.remove("active");
+    });
+    brushOceanBtn.addEventListener("click", () => {
+      terrainBrushMode = "ocean";
+      brushOceanBtn.classList.add("active");
+      brushLandBtn.classList.remove("active");
+    });
+    brushLandBtn.classList.add("active");
+
+    allWaterBtn.addEventListener("click", () => {
+      const ctx = terrainDataBuffer.getContext("2d");
+      ctx.fillStyle = `rgb(${Math.round(OCEAN_COLOR.r * 255)}, ${Math.round(OCEAN_COLOR.g * 255)}, ${Math.round(OCEAN_COLOR.b * 255)})`;
+      ctx.fillRect(0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      terrainDrawer._initialized = true;
+      renderTerrainDrawerMollweide();
+      applyTerrainToPlanet();
+    });
+
+    allLandBtn.addEventListener("click", () => {
+      const ctx = terrainDataBuffer.getContext("2d");
+      ctx.fillStyle = `rgb(${Math.round(LAND_COLOR.r * 255)}, ${Math.round(LAND_COLOR.g * 255)}, ${Math.round(LAND_COLOR.b * 255)})`;
+      ctx.fillRect(0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+      terrainDrawer._initialized = true;
+      renderTerrainDrawerMollweide();
+      applyTerrainToPlanet();
+    });
+
+    saveTextureBtn.addEventListener("click", () => {
+      const dataUrl = terrainDataBuffer.toDataURL("image/png");
+      const a = document.createElement("a");
+      a.href = dataUrl;
+      a.download = `terrain-${Date.now()}.png`;
+      a.click();
+    });
+
+    loadTextureBtn.addEventListener("click", () => loadTextureInput.click());
+    loadTextureInput.addEventListener("change", (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const bufCtx = terrainDataBuffer.getContext("2d");
+        bufCtx.imageSmoothingEnabled = true;
+        bufCtx.drawImage(img, 0, 0, TERRAIN_BUFFER_W, TERRAIN_BUFFER_H);
+        terrainDrawer._initialized = true;
+        renderTerrainDrawerMollweide();
+        applyTerrainToPlanet();
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+      loadTextureInput.value = "";
+    });
+
+    function lonLatToTerrainCanvas(lonRad, latRad) {
+      const { x: projX, y: projY } = mollweideForward(lonRad, latRad);
+      return mollweideToCanvas(projX, projY, terrainDrawerGuides.width, terrainDrawerGuides.height);
+    }
+
+    function drawTerrainDrawerGuides() {
+      const w = terrainDrawerGuides.width;
+      const h = terrainDrawerGuides.height;
+      const g = terrainDrawerGuides.getContext("2d");
+      if (!g) return;
+      g.clearRect(0, 0, w, h);
+
+      const sunLocal = sunDirection.clone().applyQuaternion(sphere.quaternion.clone().invert()).normalize();
+      const subsolarLat = Math.asin(Math.max(-1, Math.min(1, sunLocal.y)));
+      const subsolarLon = Math.atan2(sunLocal.z, sunLocal.x);
+
+      const nightOverlay = g.createImageData(w, h);
+      const nightData = nightOverlay.data;
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          const { x: projX, y: projY } = canvasToMollweide(px, py, w, h);
+          if (!isInsideMollweideEllipse(projX, projY)) continue;
+          const { lon, lat } = mollweideInverse(projX, projY);
+          const nx = Math.cos(lat) * Math.cos(lon);
+          const ny = Math.sin(lat);
+          const nz = Math.cos(lat) * Math.sin(lon);
+          const dot = nx * sunLocal.x + ny * sunLocal.y + nz * sunLocal.z;
+          if (dot < 0) {
+            const i = (py * w + px) * 4;
+            nightData[i] = 20;
+            nightData[i + 1] = 25;
+            nightData[i + 2] = 45;
+            nightData[i + 3] = 180;
+          }
+        }
+      }
+      g.putImageData(nightOverlay, 0, 0);
+
+      g.strokeStyle = "rgba(0, 0, 0, 0.6)";
+      g.lineWidth = 1.5;
+      g.setLineDash([4, 4]);
+      g.beginPath();
+      g.moveTo(0, h / 2);
+      g.lineTo(w, h / 2);
+      g.stroke();
+      g.setLineDash([]);
+
+      const subsolarP = lonLatToTerrainCanvas(subsolarLon, subsolarLat);
+      const nowSeconds = getSimulationTimeSeconds();
+      if (subsolarTrail.length === 0 || subsolarTrail[subsolarTrail.length - 1].t < nowSeconds) {
+        subsolarTrail.push({ t: nowSeconds, x: subsolarP.x, y: subsolarP.y });
+      }
+      const spinRotPerYear = Math.max(0.01, parseFloat(axialSpinSlider.value) || 1);
+      const dayLengthSeconds = visualWindowSeconds / spinRotPerYear;
+      const trailStart = Math.max(subsolarTrailEpochSeconds, nowSeconds - dayLengthSeconds);
+      subsolarTrail = subsolarTrail.filter((p) => p.t >= trailStart);
+      if (subsolarTrail.length >= 2) {
+        g.strokeStyle = "rgba(255, 220, 80, 0.95)";
+        g.lineWidth = 1.5;
+        g.setLineDash([3, 3]);
+        g.beginPath();
+        g.moveTo(subsolarTrail[0].x, subsolarTrail[0].y);
+        for (let i = 1; i < subsolarTrail.length; i++) {
+          g.lineTo(subsolarTrail[i].x, subsolarTrail[i].y);
+        }
+        g.stroke();
+        g.setLineDash([]);
+      }
+      g.fillStyle = "#ffd27f";
+      g.strokeStyle = "rgba(0,0,0,0.5)";
+      g.lineWidth = 1;
+      g.beginPath();
+      g.arc(subsolarP.x, subsolarP.y, 6, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.beginPath();
+      for (let r = 0; r < 8; r++) {
+        const a = (r / 8) * Math.PI * 2 - Math.PI / 2;
+        g.moveTo(subsolarP.x + Math.cos(a) * 4, subsolarP.y + Math.sin(a) * 4);
+        g.lineTo(subsolarP.x + Math.cos(a) * 10, subsolarP.y + Math.sin(a) * 10);
+      }
+      g.strokeStyle = "#ffd27f";
+      g.stroke();
+
+      const selectedLonRad = (selectedLon * Math.PI) / 180;
+      const selectedLatRad = (selectedLat * Math.PI) / 180;
+      const selP = lonLatToTerrainCanvas(selectedLonRad, selectedLatRad);
+      g.fillStyle = "#ff3ac6";
+      g.strokeStyle = "rgba(0,0,0,0.6)";
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.arc(selP.x, selP.y, 4, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
+
+    const grid = new THREE.LineSegments(
+      new THREE.WireframeGeometry(sphereGeometry),
+      new THREE.LineBasicMaterial({ color: 0x314166, opacity: 0.5, transparent: true })
+    );
+    scene.add(grid);
+
+    const light = new THREE.DirectionalLight(0xffffff, 1.2);
+    light.position.set(4, 0, 0);
+    scene.add(light);
+
+    const fill = new THREE.AmbientLight(0x23304d, 0.15);
+    scene.add(fill);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.enablePan = false;
+    controls.enableZoom = true;
+    controls.target.set(0, 0, 0);
+    controls.minDistance = 1.6;
+    controls.maxDistance = 6.0;
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.PAN,
+      MIDDLE: THREE.MOUSE.ROTATE,
+      RIGHT: THREE.MOUSE.PAN,
+    };
+    controls.update();
+
+    const sunDirection = new THREE.Vector3().copy(light.position).normalize();
+    const sunArrow = new THREE.ArrowHelper(
+      sunDirection,
+      new THREE.Vector3(0, 0, 0),
+      1.6,
+      0xffd27f,
+      0.15,
+      0.08
+    );
+    scene.add(sunArrow);
+    const terminatorSegments = 256;
+    const terminatorRadius = 1.015;
+    const terminatorPositions = new Float32Array(terminatorSegments * 3);
+    const terminatorGeometry = new THREE.BufferGeometry();
+    terminatorGeometry.setAttribute("position", new THREE.BufferAttribute(terminatorPositions, 3));
+    const terminatorRing = new THREE.LineLoop(
+      terminatorGeometry,
+      new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.95, linewidth: 3 })
+    );
+    scene.add(terminatorRing);
+
+    const poleArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(0, 1, 0),
+      0.6,
+      0x7bdff6,
+      0.12,
+      0.06
+    );
+    scene.add(poleArrow);
+    const worldAxisGeometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, -1.8, 0),
+      new THREE.Vector3(0, 1.8, 0),
+    ]);
+    const worldAxisLine = new THREE.Line(
+      worldAxisGeometry,
+      new THREE.LineBasicMaterial({ color: 0x45ff7a, transparent: true, opacity: 0.95 })
+    );
+    scene.add(worldAxisLine);
+    const selectionDot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.03, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x111111 })
+    );
+    sphere.add(selectionDot);
+    const localTimeArrow = new THREE.ArrowHelper(
+      new THREE.Vector3(1, 0, 0),
+      new THREE.Vector3(0, 0, 0),
+      1.6,
+      0xff3ac6,
+      0.13,
+      0.07
+    );
+    scene.add(localTimeArrow);
+
+    const labelCanvas = document.createElement("canvas");
+    labelCanvas.width = 320;
+    labelCanvas.height = 64;
+    const labelCtx = labelCanvas.getContext("2d");
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    const labelMaterial = new THREE.SpriteMaterial({ map: labelTexture, transparent: true });
+    const labelSprite = new THREE.Sprite(labelMaterial);
+    labelSprite.scale.set(1.1, 0.22, 1);
+    sphere.add(labelSprite);
+    const localTimePopupCanvas = document.createElement("canvas");
+    localTimePopupCanvas.width = 320;
+    localTimePopupCanvas.height = 90;
+    const localTimePopupCtx = localTimePopupCanvas.getContext("2d");
+    const localTimePopupTexture = new THREE.CanvasTexture(localTimePopupCanvas);
+    const localTimePopupMaterial = new THREE.SpriteMaterial({ map: localTimePopupTexture, transparent: true });
+    const localTimePopupSprite = new THREE.Sprite(localTimePopupMaterial);
+    localTimePopupSprite.scale.set(1.15, 0.3, 1);
+    localTimePopupSprite.visible = false;
+    scene.add(localTimePopupSprite);
+
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+
+    let selectedLat = 0;
+    let selectedLon = 0;
+    let selectedLocal = new THREE.Vector3(1, 0, 0);
+    let localTimeVectorActive = false;
+    let localTimeLongitudeOffset = 0;
+    let localTimeLatitudeY = 0;
+    let localTimeLatitudeXZ = 1;
+    let lastClickedLocalTimeHours = null;
+    let localTimeClockBaseHours = 12;
+    let localTimeClockBaseSeconds = 0;
+    let localTimeOrbitBaseAngle = 0;
+    let localTimeOrbitBaseSeconds = 0;
+    const localTimeVectorWorld = new THREE.Vector3(1, 0, 0);
+    selectionDot.position.copy(selectedLocal).multiplyScalar(1.01);
+    labelSprite.position.copy(selectedLocal).multiplyScalar(1.12);
+    localTimePopupSprite.position.copy(localTimeVectorWorld).multiplyScalar(1.78);
+
+    function resize() {
+      const rect = viewport3d.getBoundingClientRect();
+      renderer.setSize(rect.width, rect.height, false);
+      camera.aspect = rect.width / rect.height;
+      camera.updateProjectionMatrix();
+      const dpr = window.devicePixelRatio || 1;
+      const miniWidth = Math.max(120, Math.round((orbitMini.clientWidth || 180) * dpr));
+      const miniHeight = Math.max(120, Math.round((orbitMini.clientHeight || 180) * dpr));
+      orbitMini.width = miniWidth;
+      orbitMini.height = miniHeight;
+      controls.update();
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+
+    function degToRad(deg) {
+      return (deg * Math.PI) / 180;
+    }
+
+    function radToDeg(rad) {
+      return (rad * 180) / Math.PI;
+    }
+
+    const precessionClock = new THREE.Clock();
+    const visualWindowSeconds = 10.0;
+    const ORBIT_YEARS = 1.0;
+    const PLOT_YEARS = 2.0;
+    let baseOrientation = new THREE.Quaternion();
+    let plotState = null;
+    let lastThermalUpdateSeconds = 0;
+    let spinPhaseStartSeconds = 0;
+    let subsolarTrail = [];
+    let subsolarTrailEpochSeconds = 0;
+    let isPaused = false;
+    let pauseStartedRealSeconds = 0;
+    let pausedRealDurationSeconds = 0;
+
+    function getSimulationTimeSeconds() {
+      const realSeconds = precessionClock.getElapsedTime();
+      if (isPaused) {
+        return pauseStartedRealSeconds - pausedRealDurationSeconds;
+      }
+      return realSeconds - pausedRealDurationSeconds;
+    }
+
+    function updatePauseButtonLabel() {
+      pauseButton.textContent = isPaused ? "Resume Simulation" : "Pause Simulation";
+    }
+
+    function togglePauseSimulation() {
+      const realSeconds = precessionClock.getElapsedTime();
+      if (!isPaused) {
+        isPaused = true;
+        pauseStartedRealSeconds = realSeconds;
+      } else {
+        pausedRealDurationSeconds += realSeconds - pauseStartedRealSeconds;
+        isPaused = false;
+      }
+      updatePauseButtonLabel();
+    }
+
+    function buildBaseOrientation(obliquityRad, sampleTime) {
+      const phase = (2 * Math.PI * sampleTime) / visualWindowSeconds;
+      const sinTilt = Math.sin(obliquityRad);
+      const cosTilt = Math.cos(obliquityRad);
+      return new THREE.Vector3(
+        sinTilt * Math.cos(phase),
+        cosTilt,
+        sinTilt * Math.sin(phase)
+      ).normalize();
+    }
+
+    function buildOrientationFromObliquity(obliquityRad, sampleTime) {
+      const tiltedPole = buildBaseOrientation(obliquityRad, sampleTime);
+      return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), tiltedPole);
+    }
+
+    function updateBaseOrientation(obliquityRad, sampleTime) {
+      baseOrientation = buildOrientationFromObliquity(obliquityRad, sampleTime);
+    }
+
+    const initialObliquity = parseFloat(obliquityInput.value);
+    updateBaseOrientation(
+      degToRad(Math.max(-90, Math.min(90, Number.isFinite(initialObliquity) ? initialObliquity : 0))),
+      0
+    );
+    sphere.quaternion.copy(baseOrientation);
+    grid.quaternion.copy(baseOrientation);
+
+    function updateRateLabels() {
+      const orbitEccentricity = Math.max(0, Math.min(0.9, parseFloat(orbitEccentricitySlider.value) || 0));
+      const axialSpinRate = parseFloat(axialSpinSlider.value) || 0;
+      const textureAnomalyDeg = parseFloat(textureAnomalySlider.value) || 0;
+      orbitEccentricityValue.textContent = orbitEccentricity.toFixed(2);
+      axialSpinValue.textContent = axialSpinRate.toFixed(2);
+      textureAnomalyValue.textContent = textureAnomalyDeg.toFixed(0);
+      heatingCoolingRatio = Math.max(0, parseFloat(heatingCoolingRatioSlider.value) || 0);
+      heatCapacitance = Math.max(0.02, parseFloat(heatCapacitanceSlider.value) || 0.1);
+      conductance = Math.max(0, parseFloat(conductanceSlider.value) || 0);
+      heatingCoolingRatioValue.textContent = heatingCoolingRatio.toFixed(2);
+      heatCapacitanceValue.textContent = heatCapacitance.toFixed(2);
+      conductanceValue.textContent = conductance.toFixed(2);
+      orbitEccentricityInput.value = orbitEccentricity.toFixed(2);
+      axialSpinInput.value = axialSpinRate.toFixed(2);
+      heatingCoolingRatioInput.value = heatingCoolingRatio.toFixed(2);
+      heatCapacitanceInput.value = heatCapacitance.toFixed(2);
+      conductanceInput.value = conductance.toFixed(2);
+    }
+
+    function clampValue(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function syncNumberInputToSlider(numberInput, slider) {
+      const parsed = parseFloat(numberInput.value);
+      const min = parseFloat(slider.min);
+      const max = parseFloat(slider.max);
+      const fallback = parseFloat(slider.value) || min;
+      const value = Number.isFinite(parsed) ? clampValue(parsed, min, max) : fallback;
+      slider.value = value.toString();
+    }
+
+    function getOrientationAtTime(sampleTime, obliquityRad, cycleStartOverrideSeconds) {
+      const rawSpinRotPerYear = parseFloat(axialSpinSlider.value) || 0;
+      // Rotating reference frame with static sun vector: 1 rotation/year is synchronous (tidal-like).
+      const spinRotPerYear = rawSpinRotPerYear - 1;
+      const motionBaseQuat = buildOrientationFromObliquity(obliquityRad, sampleTime);
+      const simulatedYears = (sampleTime - spinPhaseStartSeconds) / visualWindowSeconds;
+      const orbitState = getOrbitState(sampleTime, cycleStartOverrideSeconds);
+      const startAnomalyRad = degToRad(parseFloat(textureAnomalySlider.value) || 0);
+      const spinAngle = startAnomalyRad + (2 * Math.PI * spinRotPerYear * simulatedYears) - orbitState.leadLag;
+      const spinQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), spinAngle);
+      return motionBaseQuat.multiply(spinQuat);
+    }
+
+    function restartAndRecompute() {
+      const now = getSimulationTimeSeconds();
+      spinPhaseStartSeconds = now;
+      subsolarTrail = [];
+      subsolarTrailEpochSeconds = now;
+      if (localTimeVectorActive) {
+        const startAnomalyRad = degToRad(parseFloat(textureAnomalySlider.value) || 0);
+        const currentLocalVectorAngle = Math.atan2(localTimeVectorWorld.y, localTimeVectorWorld.x);
+        localTimeOrbitBaseAngle = Math.atan2(
+          Math.sin(currentLocalVectorAngle - startAnomalyRad + Math.PI),
+          Math.cos(currentLocalVectorAngle - startAnomalyRad + Math.PI)
+        );
+        localTimeOrbitBaseSeconds = now;
+        if (Number.isFinite(lastClickedLocalTimeHours)) {
+          localTimeClockBaseHours = lastClickedLocalTimeHours;
+        }
+        localTimeClockBaseSeconds = now;
+      }
+      computeCycle();
+    }
+
+    function solveEccentricAnomaly(meanAnomaly, eccentricity) {
+      let eccentricAnomaly = meanAnomaly;
+      for (let i = 0; i < 7; i++) {
+        const f = eccentricAnomaly - eccentricity * Math.sin(eccentricAnomaly) - meanAnomaly;
+        const fp = 1 - eccentricity * Math.cos(eccentricAnomaly);
+        eccentricAnomaly -= f / Math.max(1e-6, fp);
+      }
+      return eccentricAnomaly;
+    }
+
+    function getOrbitState(nowSeconds, cycleStartOverrideSeconds) {
+      const eccentricity = Math.max(0, Math.min(0.9, parseFloat(orbitEccentricitySlider.value) || 0));
+      const windowSeconds = visualWindowSeconds;
+      const yearDays = ORBIT_YEARS;
+      const cycleStart = Number.isFinite(cycleStartOverrideSeconds)
+        ? cycleStartOverrideSeconds
+        : ((plotState && plotState.startTime) || 0);
+      const phase = ((((nowSeconds - cycleStart) % windowSeconds) + windowSeconds) % windowSeconds) / windowSeconds;
+      const meanAnomaly = 2 * Math.PI * phase;
+      const eccentricAnomaly = solveEccentricAnomaly(meanAnomaly, eccentricity);
+      const trueAnomaly = 2 * Math.atan2(
+        Math.sqrt(1 + eccentricity) * Math.sin(eccentricAnomaly / 2),
+        Math.sqrt(1 - eccentricity) * Math.cos(eccentricAnomaly / 2)
+      );
+      const leadLag = Math.atan2(Math.sin(trueAnomaly - meanAnomaly), Math.cos(trueAnomaly - meanAnomaly));
+      return {
+        eccentricity,
+        windowSeconds,
+        yearDays,
+        phase,
+        meanAnomaly,
+        eccentricAnomaly,
+        trueAnomaly,
+        leadLag,
+      };
+    }
+
+    function getSubsolarLongitudeLocal(finalQuat) {
+      const sunLocal = sunDirection.clone().applyQuaternion(finalQuat.clone().invert()).normalize();
+      return Math.atan2(sunLocal.z, sunLocal.x);
+    }
+
+    function formatClockTime(hoursValue) {
+      const wrappedHours = ((hoursValue % 24) + 24) % 24;
+      const hour = Math.floor(wrappedHours);
+      const minute = Math.floor((wrappedHours - hour) * 60);
+      return `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
+    }
+
+    function drawLocalTimePopup(hoursValue) {
+      const wrappedHours = ((hoursValue % 24) + 24) % 24;
+      const timeLabel = formatClockTime(wrappedHours);
+      const minuteDistanceToNoon = Math.abs(wrappedHours - 12) * 60;
+      const noonSuffix = minuteDistanceToNoon < 0.5 ? " (noon)" : "";
+      localTimePopupCtx.clearRect(0, 0, localTimePopupCanvas.width, localTimePopupCanvas.height);
+      localTimePopupCtx.fillStyle = "rgba(10, 6, 16, 0.75)";
+      localTimePopupCtx.fillRect(0, 0, localTimePopupCanvas.width, localTimePopupCanvas.height);
+      localTimePopupCtx.strokeStyle = "rgba(255, 58, 198, 0.95)";
+      localTimePopupCtx.lineWidth = 3;
+      localTimePopupCtx.strokeRect(1.5, 1.5, localTimePopupCanvas.width - 3, localTimePopupCanvas.height - 3);
+      localTimePopupCtx.fillStyle = "#ff3ac6";
+      localTimePopupCtx.font = "bold 36px 'Space Grotesk', sans-serif";
+      localTimePopupCtx.textAlign = "center";
+      localTimePopupCtx.textBaseline = "middle";
+      localTimePopupCtx.fillText(`${timeLabel}${noonSuffix}`, localTimePopupCanvas.width / 2, localTimePopupCanvas.height / 2);
+      localTimePopupTexture.needsUpdate = true;
+      localTimePopupSprite.visible = true;
+    }
+
+    function updateLocalTimeVector(nowSeconds) {
+      if (!localTimeVectorActive) {
+        localTimeArrow.visible = false;
+        localTimePopupSprite.visible = false;
+        return;
+      }
+      const orbitState = getOrbitState(nowSeconds);
+      const subsolarLongitude = getSubsolarLongitudeLocal(sphere.quaternion);
+      const localTimeLongitude = subsolarLongitude + localTimeLongitudeOffset + orbitState.leadLag;
+      const localTimeVectorLocal = new THREE.Vector3(
+        Math.cos(localTimeLongitude) * localTimeLatitudeXZ,
+        localTimeLatitudeY,
+        Math.sin(localTimeLongitude) * localTimeLatitudeXZ
+      ).normalize();
+      localTimeVectorWorld.copy(localTimeVectorLocal).applyQuaternion(sphere.quaternion).normalize();
+      localTimeArrow.visible = true;
+      localTimeArrow.setDirection(localTimeVectorWorld);
+      const elapsedYears = (nowSeconds - localTimeClockBaseSeconds) / visualWindowSeconds;
+      const spinRotPerYear = Math.max(0.01, parseFloat(axialSpinSlider.value) || 1);
+      lastClickedLocalTimeHours = localTimeClockBaseHours + elapsedYears * spinRotPerYear * 24;
+      localTimePopupSprite.visible = false;
+    }
+
+    function applyCurrentTemperaturesToVertexColors() {
+      for (let i = 0; i < triangleCount; i++) {
+        const nextTemp = triangleTemps[i];
+        const normalizedTemp = Math.max(0, Math.min(1, (nextTemp - TEMP_MIN) / TEMP_RANGE));
+        const colorIndex = i * 12;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        let a = 1;
+        if (normalizedTemp <= 0.5) {
+          const mix = normalizedTemp * 2;
+          r = 0.0;
+          g = mix;
+          b = 1.0 - mix;
+          a = 1.0 - 0.5 * mix;
+        } else {
+          const mix = (normalizedTemp - 0.5) * 2;
+          r = mix;
+          g = 1.0 - mix;
+          b = 0.0;
+          a = 0.5 + 0.5 * mix;
+        }
+        vertexColors[colorIndex + 0] = r;
+        vertexColors[colorIndex + 1] = g;
+        vertexColors[colorIndex + 2] = b;
+        vertexColors[colorIndex + 3] = a;
+        vertexColors[colorIndex + 4] = r;
+        vertexColors[colorIndex + 5] = g;
+        vertexColors[colorIndex + 6] = b;
+        vertexColors[colorIndex + 7] = a;
+        vertexColors[colorIndex + 8] = r;
+        vertexColors[colorIndex + 9] = g;
+        vertexColors[colorIndex + 10] = b;
+        vertexColors[colorIndex + 11] = a;
+      }
+      colorAttribute.needsUpdate = true;
+    }
+
+    function resetSimulationForSelection(nowSeconds, obliquityRad) {
+      spinPhaseStartSeconds = nowSeconds;
+      subsolarTrail = [];
+      subsolarTrailEpochSeconds = nowSeconds;
+      localTimeOrbitBaseSeconds = nowSeconds;
+      localTimeClockBaseSeconds = nowSeconds;
+      triangleTemps.fill(INITIAL_TEMP);
+      applyCurrentTemperaturesToVertexColors();
+      plotState = null;
+      lastThermalUpdateSeconds = nowSeconds;
+      const resetQuat = getOrientationAtTime(nowSeconds, obliquityRad, nowSeconds);
+      sphere.quaternion.copy(resetQuat);
+      grid.quaternion.copy(resetQuat);
+      updateTerminatorRing();
+      computeCycle();
+      drawOrbitMini(nowSeconds);
+    }
+
+    function estimateSelectedTriangleTemperature() {
+      if (!selectedLocal) return INITIAL_TEMP;
+      let bestIndex = 0;
+      let bestDot = -Infinity;
+      for (let i = 0; i < triangleCount; i++) {
+        const d = localFaceNormals[i].dot(selectedLocal);
+        if (d > bestDot) {
+          bestDot = d;
+          bestIndex = i;
+        }
+      }
+      return triangleTemps[bestIndex];
+    }
+
+    function getDisplayMeanTargetC() {
+      const ratioNorm = Math.max(0.001, heatingCoolingRatio) / HEATING_RATIO_REFERENCE;
+      return DISPLAY_MEAN_TEMP_BASE_C * Math.pow(ratioNorm, HEATING_RATIO_NONLINEAR_EXP);
+    }
+
+    orbitEccentricitySlider.addEventListener("input", updateRateLabels);
+    axialSpinSlider.addEventListener("input", updateRateLabels);
+    textureAnomalySlider.addEventListener("input", updateRateLabels);
+    heatingCoolingRatioSlider.addEventListener("input", updateRateLabels);
+    heatCapacitanceSlider.addEventListener("input", updateRateLabels);
+    conductanceSlider.addEventListener("input", updateRateLabels);
+    pauseButton.addEventListener("click", togglePauseSimulation);
+    orbitEccentricityInput.addEventListener("input", () => {
+      syncNumberInputToSlider(orbitEccentricityInput, orbitEccentricitySlider);
+      updateRateLabels();
+      restartAndRecompute();
+    });
+    axialSpinInput.addEventListener("input", () => {
+      syncNumberInputToSlider(axialSpinInput, axialSpinSlider);
+      updateRateLabels();
+      restartAndRecompute();
+    });
+    heatingCoolingRatioInput.addEventListener("input", () => {
+      syncNumberInputToSlider(heatingCoolingRatioInput, heatingCoolingRatioSlider);
+      updateRateLabels();
+      restartAndRecompute();
+    });
+    heatCapacitanceInput.addEventListener("input", () => {
+      syncNumberInputToSlider(heatCapacitanceInput, heatCapacitanceSlider);
+      updateRateLabels();
+      restartAndRecompute();
+    });
+    conductanceInput.addEventListener("input", () => {
+      syncNumberInputToSlider(conductanceInput, conductanceSlider);
+      updateRateLabels();
+      restartAndRecompute();
+    });
+    orbitEccentricitySlider.addEventListener("input", restartAndRecompute);
+    axialSpinSlider.addEventListener("input", restartAndRecompute);
+    textureAnomalySlider.addEventListener("input", restartAndRecompute);
+    obliquityInput.addEventListener("input", restartAndRecompute);
+    heatingCoolingRatioSlider.addEventListener("input", restartAndRecompute);
+    heatCapacitanceSlider.addEventListener("input", restartAndRecompute);
+    conductanceSlider.addEventListener("input", restartAndRecompute);
+    viewModeTerrain.addEventListener("click", () => {
+      viewMode = "terrain";
+      viewModeTerrain.classList.add("active");
+      viewModeTemp.classList.remove("active");
+      viewModeSunlight.classList.remove("active");
+      viewModeCurrents.classList.remove("active");
+      applyViewMode();
+    });
+    viewModeTemp.addEventListener("click", () => {
+      viewMode = "temp";
+      viewModeTemp.classList.add("active");
+      viewModeTerrain.classList.remove("active");
+      viewModeSunlight.classList.remove("active");
+      viewModeCurrents.classList.remove("active");
+      applyViewMode();
+    });
+    viewModeSunlight.addEventListener("click", () => {
+      viewMode = "sunlight";
+      viewModeSunlight.classList.add("active");
+      viewModeTerrain.classList.remove("active");
+      viewModeTemp.classList.remove("active");
+      viewModeCurrents.classList.remove("active");
+      applyViewMode();
+    });
+    viewModeCurrents.addEventListener("click", () => {
+      viewMode = "currents";
+      viewModeCurrents.classList.add("active");
+      viewModeTerrain.classList.remove("active");
+      viewModeTemp.classList.remove("active");
+      viewModeSunlight.classList.remove("active");
+      applyViewMode();
+    });
+    updateRateLabels();
+
+    function computeCycle() {
+      const obliquityValue = parseFloat(obliquityInput.value);
+      const coneDeg = Math.max(-90, Math.min(90, Number.isFinite(obliquityValue) ? obliquityValue : 0));
+      const obliquityRad = degToRad(coneDeg);
+      const steps = 800;
+      const plotYears = PLOT_YEARS;
+      const previewSeconds = visualWindowSeconds * plotYears;
+      const tSamples = new Array(steps);
+      const sunlight = new Array(steps);
+      const temperature = new Array(steps);
+      const now = getSimulationTimeSeconds();
+      const cycleStart = now;
+      let worldTempMin = triangleTemps[0];
+      let worldTempMax = triangleTemps[0];
+      let worldTempSum = triangleTemps[0];
+      for (let i = 1; i < triangleCount; i++) {
+        const t = triangleTemps[i];
+        worldTempSum += t;
+        if (t < worldTempMin) worldTempMin = t;
+        if (t > worldTempMax) worldTempMax = t;
+      }
+      const worldTempMean = worldTempSum / Math.max(1, triangleCount);
+      const displayOffsetC = getDisplayMeanTargetC() - worldTempMean;
+      updateBaseOrientation(obliquityRad, now);
+      const safeCapacitance = Math.max(0.02, heatCapacitance);
+      const sampleStepSeconds = (visualWindowSeconds * plotYears) / Math.max(1, steps - 1);
+      temperature[0] = estimateSelectedTriangleTemperature();
+      const projectedWorldTemps = new Float32Array(triangleCount);
+      projectedWorldTemps.set(triangleTemps);
+      let projectedWorldMin = worldTempMin + displayOffsetC;
+      let projectedWorldMax = worldTempMax + displayOffsetC;
+      const sunLocal = new THREE.Vector3();
+      const invQuat = new THREE.Quaternion();
+      const sunAltitudeAzimuth = new Array(steps);
+
+      for (let i = 0; i < steps; i++) {
+        const year = (i / (steps - 1)) * plotYears;
+        tSamples[i] = year;
+        const sampleTime = now + year * visualWindowSeconds;
+        const finalQuat = getOrientationAtTime(sampleTime, obliquityRad, cycleStart);
+        const worldPoint = selectedLocal.clone().applyQuaternion(finalQuat).normalize();
+        const sunDot = worldPoint.dot(sunDirection);
+        sunlight[i] = Math.max(0, sunDot);
+        const altRad = Math.asin(Math.max(-1, Math.min(1, sunDot)));
+        const northBody = new THREE.Vector3(0, 1, 0).sub(selectedLocal.clone().multiplyScalar(selectedLocal.y));
+        const northLen = northBody.length();
+        let azimuthRad = 0;
+        if (northLen > 1e-6) {
+          northBody.divideScalar(northLen);
+          const eastBody = new THREE.Vector3().crossVectors(selectedLocal, northBody).normalize();
+          const northWorld = northBody.clone().applyQuaternion(finalQuat);
+          const eastWorld = eastBody.clone().applyQuaternion(finalQuat);
+          const sunProj = sunDirection.clone().sub(worldPoint.clone().multiplyScalar(sunDot));
+          const sunNorth = sunProj.dot(northWorld);
+          const sunEast = sunProj.dot(eastWorld);
+          azimuthRad = Math.atan2(sunEast, sunNorth);
+        }
+        sunAltitudeAzimuth[i] = { alt: altRad * 180 / Math.PI, az: azimuthRad * 180 / Math.PI };
+        invQuat.copy(finalQuat).invert();
+        sunLocal.copy(sunDirection).applyQuaternion(invQuat).normalize();
+        for (let t = 0; t < triangleCount; t++) {
+          const heatingRateTriangle = Math.max(0, localFaceNormals[t].dot(sunLocal)) * heatingCoolingRatio * BASE_COOLING_RATE;
+          const deltaTempTriangle = ((heatingRateTriangle - BASE_COOLING_RATE) / safeCapacitance) * sampleStepSeconds;
+          const nextTriangleTemp = Math.max(TEMP_MIN, Math.min(TEMP_MAX, projectedWorldTemps[t] + deltaTempTriangle));
+          projectedWorldTemps[t] = nextTriangleTemp;
+          const displayTriangleTemp = nextTriangleTemp + displayOffsetC;
+          if (displayTriangleTemp < projectedWorldMin) projectedWorldMin = displayTriangleTemp;
+          if (displayTriangleTemp > projectedWorldMax) projectedWorldMax = displayTriangleTemp;
+        }
+        if (i > 0) {
+          const heatingRate = sunlight[i] * heatingCoolingRatio * BASE_COOLING_RATE;
+          const deltaTemp = ((heatingRate - BASE_COOLING_RATE) / safeCapacitance) * sampleStepSeconds;
+          temperature[i] = Math.max(TEMP_MIN, Math.min(TEMP_MAX, temperature[i - 1] + deltaTemp));
+        }
+        temperature[i] += displayOffsetC;
+      }
+      plotState = {
+        startTime: now,
+        windowSeconds: previewSeconds,
+        yearDays: plotYears,
+        tSamples,
+        sunlight,
+        temperature,
+        sunAltitudeAzimuth,
+        worldTempMin: projectedWorldMin,
+        worldTempMax: projectedWorldMax,
+      };
+      const currentWorldPoint = selectedLocal.clone().applyQuaternion(sphere.quaternion).normalize();
+      const currentLight = Math.max(0, currentWorldPoint.dot(sunDirection));
+      const dayFraction = sunlight.filter((value) => value > 0).length / steps;
+      updateSelectionLabel(currentLight);
+      const timeSuffix = Number.isFinite(lastClickedLocalTimeHours)
+        ? ` Current local time: ${formatClockTime(lastClickedLocalTimeHours)}.`
+        : "";
+      info.textContent = `Selected lat ${selectedLat.toFixed(2)}°, lon ${selectedLon.toFixed(2)}°. Day fraction: ${(dayFraction * 100).toFixed(1)}%. Current light: ${currentLight.toFixed(2)}.${timeSuffix}`;
+      drawPlot(now, currentLight);
+      drawSunPathDiagram(now, currentLight);
+    }
+
+    function drawSunPathDiagram(nowSeconds, currentLight) {
+      if (!plotState?.sunAltitudeAzimuth) return;
+      const w = sunPathPlot.width;
+      const h = sunPathPlot.height;
+      sunPathCtx.clearRect(0, 0, w, h);
+      sunPathCtx.fillStyle = "#0b1224";
+      sunPathCtx.fillRect(0, 0, w, h);
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxRadius = Math.min(w, h) / 2 - 36;
+      const horizonRadius = maxRadius / 2;
+      const toR = (alt) => (1 - alt / 90) * horizonRadius;
+      sunPathCtx.strokeStyle = "#1a2840";
+      sunPathCtx.lineWidth = 0.5;
+      const altGridLines = [90, 60, 45, 30, 15, -15, -30, -60, -90];
+      for (const alt of altGridLines) {
+        const r = toR(alt);
+        if (r <= maxRadius) {
+          sunPathCtx.setLineDash([]);
+          sunPathCtx.strokeStyle = "#1a2840";
+          sunPathCtx.beginPath();
+          sunPathCtx.arc(cx, cy, r, 0, Math.PI * 2);
+          sunPathCtx.stroke();
+        }
+      }
+      sunPathCtx.setLineDash([]);
+      sunPathCtx.strokeStyle = "#4a6088";
+      sunPathCtx.lineWidth = 1.5;
+      sunPathCtx.beginPath();
+      sunPathCtx.arc(cx, cy, horizonRadius, 0, Math.PI * 2);
+      sunPathCtx.stroke();
+      sunPathCtx.lineWidth = 0.5;
+      const azGridLines = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+      for (const az of azGridLines) {
+        const aRad = (90 - az) * Math.PI / 180;
+        const ex = cx + maxRadius * Math.cos(aRad);
+        const ey = cy - maxRadius * Math.sin(aRad);
+        sunPathCtx.strokeStyle = "#1a2840";
+        sunPathCtx.lineWidth = 0.5;
+        sunPathCtx.beginPath();
+        sunPathCtx.moveTo(cx, cy);
+        sunPathCtx.lineTo(ex, ey);
+        sunPathCtx.stroke();
+      }
+      sunPathCtx.strokeStyle = "#1e2b4a";
+      sunPathCtx.lineWidth = 1;
+      sunPathCtx.beginPath();
+      sunPathCtx.arc(cx, cy, maxRadius, 0, Math.PI * 2);
+      sunPathCtx.stroke();
+      sunPathCtx.fillStyle = "#6b7fa0";
+      sunPathCtx.font = "10px 'Space Grotesk', sans-serif";
+      const labelAngle = -Math.PI / 4;
+      for (const alt of altGridLines) {
+        if (alt === 90) continue;
+        const r = toR(alt);
+        if (r >= 6 && r <= maxRadius - 6) {
+          const tx = cx + r * Math.cos(labelAngle);
+          const ty = cy - r * Math.sin(labelAngle);
+          sunPathCtx.textAlign = "right";
+          sunPathCtx.textBaseline = "middle";
+          sunPathCtx.fillText(`${alt}°`, tx - 3, ty);
+        }
+      }
+      const labels = ["N", "E", "S", "W"];
+      const labelRadius = maxRadius + 10;
+      for (let k = 0; k < 4; k++) {
+        const a = (90 - k * 90) * Math.PI / 180;
+        const lx = cx + Math.cos(a) * labelRadius;
+        const ly = cy - Math.sin(a) * labelRadius;
+        sunPathCtx.fillStyle = "#9fb0d1";
+        sunPathCtx.font = "11px 'Space Grotesk', sans-serif";
+        sunPathCtx.textAlign = "center";
+        sunPathCtx.textBaseline = "middle";
+        sunPathCtx.fillText(labels[k], lx, ly);
+      }
+      const { sunAltitudeAzimuth, startTime, windowSeconds } = plotState;
+      const toXY = (alt, az) => {
+        const r = (1 - alt / 90) * horizonRadius;
+        const aRad = (90 - az) * Math.PI / 180;
+        return { x: cx + r * Math.cos(aRad), y: cy - r * Math.sin(aRad) };
+      };
+      sunPathCtx.strokeStyle = "#ff7f0e";
+      sunPathCtx.lineWidth = 2;
+      sunPathCtx.beginPath();
+      const p0 = toXY(sunAltitudeAzimuth[0].alt, sunAltitudeAzimuth[0].az);
+      sunPathCtx.moveTo(p0.x, p0.y);
+      for (let i = 1; i < sunAltitudeAzimuth.length; i++) {
+        const p = toXY(sunAltitudeAzimuth[i].alt, sunAltitudeAzimuth[i].az);
+        sunPathCtx.lineTo(p.x, p.y);
+      }
+      sunPathCtx.stroke();
+      const wrappedTime = ((nowSeconds - startTime) % windowSeconds + windowSeconds) % windowSeconds;
+      const idx = Math.min(
+        sunAltitudeAzimuth.length - 1,
+        Math.floor((wrappedTime / windowSeconds) * sunAltitudeAzimuth.length)
+      );
+      if (idx >= 0) {
+        const { alt, az } = sunAltitudeAzimuth[idx];
+        const curr = toXY(alt, az);
+        sunPathCtx.fillStyle = alt >= 0 ? "#ffffff" : "#152238";
+        sunPathCtx.strokeStyle = alt >= 0 ? "rgba(0,0,0,0.4)" : "#0d1628";
+        sunPathCtx.lineWidth = 1;
+        sunPathCtx.beginPath();
+        sunPathCtx.arc(curr.x, curr.y, 5, 0, Math.PI * 2);
+        sunPathCtx.fill();
+        sunPathCtx.stroke();
+      }
+      let maxAlt = -Infinity;
+      for (const p of sunAltitudeAzimuth) {
+        if (p.alt > maxAlt) maxAlt = p.alt;
+      }
+      sunPathCtx.fillStyle = "#c7d4ef";
+      sunPathCtx.font = "11px 'Space Grotesk', sans-serif";
+      sunPathCtx.textAlign = "left";
+      sunPathCtx.fillText("Sun path (altitude vs azimuth)", 8, 12);
+      if (Number.isFinite(maxAlt)) {
+        sunPathCtx.fillStyle = "#9fb0d1";
+        sunPathCtx.fillText(`Max altitude: ${maxAlt.toFixed(0)}°`, 8, 24);
+      }
+    }
+
+    function drawPlot(nowSeconds, currentLight) {
+      if (!plotState) return;
+      const w = plot.width;
+      const h = plot.height;
+      const {
+        tSamples,
+        sunlight,
+        temperature,
+        startTime,
+        windowSeconds,
+        yearDays,
+        worldTempMin,
+        worldTempMax
+      } = plotState;
+      const marginLeft = 46;
+      const marginRight = 66;
+      const marginTop = 12;
+      const marginBottom = 46;
+      const plotLeft = marginLeft;
+      const plotRight = w - marginRight;
+      const plotTop = marginTop;
+      const plotBottom = h - marginBottom;
+      const plotWidth = plotRight - plotLeft;
+      const plotHeight = plotBottom - plotTop;
+      const xForIndex = (i) => plotLeft + (i / (tSamples.length - 1)) * plotWidth;
+      const yForSunlight = (value) => plotBottom - value * plotHeight;
+      const tempAxisMin = Number.isFinite(worldTempMin) ? worldTempMin : TEMP_MIN;
+      const tempAxisMaxRaw = Number.isFinite(worldTempMax) ? worldTempMax : tempAxisMin + 1;
+      const tempAxisMax = Math.max(tempAxisMin + 0.01, tempAxisMaxRaw);
+      const yForTemperature = (value) => {
+        const norm = (value - tempAxisMin) / Math.max(1e-6, tempAxisMax - tempAxisMin);
+        return plotBottom - Math.max(0, Math.min(1, norm)) * plotHeight;
+      };
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.fillStyle = "#0b1224";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "#23324f";
+      ctx.lineWidth = 1;
+      ctx.font = "11px 'Space Grotesk', sans-serif";
+      ctx.fillStyle = "#9fb0d1";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let k = 0; k <= 4; k++) {
+        const value = k / 4;
+        const y = yForSunlight(value);
+        ctx.beginPath();
+        ctx.moveTo(plotLeft, y);
+        ctx.lineTo(plotRight, y);
+        ctx.stroke();
+        ctx.fillText(value.toFixed(2), plotLeft - 6, y);
+      }
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (let k = 0; k <= 4; k++) {
+        const yearValue = (k / 4) * yearDays;
+        const hourValue = yearValue * 24;
+        const x = plotLeft + (k / 4) * plotWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, plotTop);
+        ctx.lineTo(x, plotBottom);
+        ctx.stroke();
+        ctx.fillText(`${yearValue.toFixed(1)}y`, x, plotBottom + 4);
+        ctx.fillText(`${hourValue.toFixed(0)}h`, x, plotBottom + 18);
+      }
+
+      ctx.strokeStyle = "#8ea3c9";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(plotLeft, plotTop);
+      ctx.lineTo(plotLeft, plotBottom);
+      ctx.lineTo(plotRight, plotBottom);
+      ctx.stroke();
+      ctx.fillStyle = "#c7d4ef";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText("Sunlight", plotLeft, 2);
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let k = 0; k <= 4; k++) {
+        const tempValue = tempAxisMin + (k / 4) * (tempAxisMax - tempAxisMin);
+        const y = yForTemperature(tempValue);
+        ctx.fillText(`${tempValue.toFixed(1)}°`, plotRight + 52, y);
+      }
+      ctx.textAlign = "right";
+      ctx.textBaseline = "top";
+      ctx.fillText("Temp (°C)", plotRight + 52, 2);
+      ctx.textAlign = "right";
+      ctx.fillText("Years / Hours", plotRight, h - 14);
+
+      if (sunlight.length < 2) {
+        return;
+      }
+
+      ctx.beginPath();
+      for (let i = 0; i < tSamples.length; i++) {
+        const x = xForIndex(i);
+        const y = yForSunlight(sunlight[i]);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.strokeStyle = "#ff7f0e";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (temperature && temperature.length === tSamples.length) {
+        ctx.beginPath();
+        for (let i = 0; i < tSamples.length; i++) {
+          const x = xForIndex(i);
+          const y = yForTemperature(temperature[i]);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.strokeStyle = "#ff3ac6";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "rgba(255, 210, 127, 0.35)";
+      ctx.beginPath();
+      for (let i = 0; i < tSamples.length; i++) {
+        const x = xForIndex(i);
+        const y = yForSunlight(sunlight[i]);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.lineTo(plotRight, plotBottom);
+      ctx.lineTo(plotLeft, plotBottom);
+      ctx.closePath();
+      ctx.fill();
+
+      const wrappedTime = ((nowSeconds - startTime) % windowSeconds + windowSeconds) % windowSeconds;
+      const cursorX = plotLeft + (wrappedTime / windowSeconds) * plotWidth;
+      ctx.strokeStyle = "rgba(123, 223, 246, 0.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cursorX, plotTop);
+      ctx.lineTo(cursorX, plotBottom);
+      ctx.stroke();
+
+      if (typeof currentLight === "number") {
+        const y = yForSunlight(currentLight);
+        ctx.fillStyle = "#7bdff6";
+        ctx.beginPath();
+        ctx.arc(cursorX, y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    }
+
+    function updateSurfaceTemperature(finalQuat, deltaSeconds) {
+      if (deltaSeconds <= 0) return;
+      const dt = Math.min(deltaSeconds, MAX_THERMAL_FRAME_DT);
+      const worldNormal = new THREE.Vector3();
+      const safeCapacitance = Math.max(0.0001, heatCapacitance);
+      const maxSubstepFromDiffusion = conductance > 0
+        ? (DIFFUSION_STABILITY_TARGET * safeCapacitance) / conductance
+        : dt;
+      const preferredSubstep = Math.min(dt, MAX_THERMAL_SUBSTEP_DT, maxSubstepFromDiffusion);
+      const substepCount = Math.max(1, Math.ceil(dt / Math.max(0.0005, preferredSubstep)));
+      const subDt = dt / substepCount;
+
+      for (let i = 0; i < triangleCount; i++) {
+        worldNormal.copy(localFaceNormals[i]).applyQuaternion(finalQuat).normalize();
+        heatingScratch[i] = Math.max(0, worldNormal.dot(sunDirection)) * heatingCoolingRatio * BASE_COOLING_RATE;
+      }
+
+      for (let step = 0; step < substepCount; step++) {
+        for (let i = 0; i < triangleCount; i++) {
+          const currentTemp = triangleTemps[i];
+          const neighbors = triangleNeighbors[i];
+          let conductiveInput = 0;
+          if (neighbors.length) {
+            let deltaSum = 0;
+            for (let n = 0; n < neighbors.length; n++) {
+              deltaSum += triangleTemps[neighbors[n]] - currentTemp;
+            }
+            conductiveInput = conductance * (deltaSum / neighbors.length);
+          }
+          const deltaTemp = ((heatingScratch[i] - BASE_COOLING_RATE + conductiveInput) / safeCapacitance) * subDt;
+          const nextTemp = Math.max(TEMP_MIN, Math.min(TEMP_MAX, currentTemp + deltaTemp));
+          temperatureScratch[i] = nextTemp;
+        }
+        triangleTemps.set(temperatureScratch);
+      }
+
+      applyCurrentTemperaturesToVertexColors();
+    }
+
+    function updateTerminatorRing() {
+      const ref = Math.abs(sunDirection.y) > 0.9
+        ? new THREE.Vector3(1, 0, 0)
+        : new THREE.Vector3(0, 1, 0);
+      const u = new THREE.Vector3().crossVectors(sunDirection, ref).normalize();
+      const v = new THREE.Vector3().crossVectors(sunDirection, u).normalize();
+      for (let i = 0; i < terminatorSegments; i++) {
+        const angle = (2 * Math.PI * i) / terminatorSegments;
+        const c = Math.cos(angle);
+        const s = Math.sin(angle);
+        const x = (u.x * c + v.x * s) * terminatorRadius;
+        const y = (u.y * c + v.y * s) * terminatorRadius;
+        const z = (u.z * c + v.z * s) * terminatorRadius;
+        const idx = i * 3;
+        terminatorPositions[idx] = x;
+        terminatorPositions[idx + 1] = y;
+        terminatorPositions[idx + 2] = z;
+      }
+      terminatorGeometry.attributes.position.needsUpdate = true;
+    }
+
+    function drawOrbitMini(nowSeconds) {
+      const w = orbitMini.width;
+      const h = orbitMini.height;
+      orbitCtx.clearRect(0, 0, w, h);
+      orbitCtx.fillStyle = "rgba(7, 12, 24, 0.92)";
+      orbitCtx.fillRect(0, 0, w, h);
+
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      const orbitState = getOrbitState(nowSeconds);
+      const { eccentricity, yearDays, phase, eccentricAnomaly } = orbitState;
+      const miniPadding = Math.max(14, Math.round(Math.min(w, h) * 0.08));
+      const maxSunRadius = Math.min(w, h) * 0.5 - miniPadding;
+      const a = maxSunRadius / (1 + eccentricity);
+      const b = a * Math.sqrt(1 - eccentricity * eccentricity);
+
+      orbitCtx.strokeStyle = "#2a3d63";
+      orbitCtx.lineWidth = Math.max(1, Math.round(w * 0.008));
+      orbitCtx.beginPath();
+      for (let i = 0; i <= 180; i++) {
+        const ea = (2 * Math.PI * i) / 180;
+        const ox = a * (Math.cos(ea) - eccentricity);
+        const oy = b * Math.sin(ea);
+        const px = cx + ox;
+        const py = cy + oy;
+        if (i === 0) orbitCtx.moveTo(px, py);
+        else orbitCtx.lineTo(px, py);
+      }
+      orbitCtx.stroke();
+      const startX = cx + a * (1 - eccentricity);
+      const startY = cy;
+      orbitCtx.save();
+      orbitCtx.setLineDash([3, 4]);
+      orbitCtx.strokeStyle = "rgba(199, 212, 239, 0.9)";
+      orbitCtx.lineWidth = Math.max(1, Math.round(w * 0.006));
+      orbitCtx.beginPath();
+      orbitCtx.moveTo(cx, cy);
+      orbitCtx.lineTo(startX, startY);
+      orbitCtx.stroke();
+      orbitCtx.restore();
+
+      orbitCtx.fillStyle = "#ffd27f";
+      orbitCtx.beginPath();
+      orbitCtx.arc(cx, cy, Math.max(3, a * 0.12), 0, 2 * Math.PI);
+      orbitCtx.fill();
+
+      const orbitX = a * (Math.cos(eccentricAnomaly) - eccentricity);
+      const orbitY = b * Math.sin(eccentricAnomaly);
+      const px = cx + orbitX;
+      const py = cy + orbitY;
+      const toSunX = cx - px;
+      const toSunY = cy - py;
+      const toSunLen = Math.hypot(toSunX, toSunY);
+      const inwardSunX = toSunLen > 1e-6 ? toSunX / toSunLen : 1;
+      const inwardSunY = toSunLen > 1e-6 ? toSunY / toSunLen : 0;
+      const sunAngleFromPosition = Math.atan2(inwardSunY, inwardSunX);
+
+      orbitCtx.strokeStyle = "#ffd27f";
+      orbitCtx.lineWidth = Math.max(1, Math.round(w * 0.007));
+      orbitCtx.beginPath();
+      orbitCtx.moveTo(cx, cy);
+      orbitCtx.lineTo(px, py);
+      orbitCtx.stroke();
+
+      const planetRadius = Math.max(3, a * 0.1);
+      orbitCtx.fillStyle = "rgba(255, 210, 127, 0.95)";
+      orbitCtx.beginPath();
+      orbitCtx.arc(px, py, planetRadius, sunAngleFromPosition - Math.PI / 2, sunAngleFromPosition + Math.PI / 2);
+      orbitCtx.closePath();
+      orbitCtx.fill();
+      orbitCtx.fillStyle = "rgba(32, 50, 79, 0.95)";
+      orbitCtx.beginPath();
+      orbitCtx.arc(px, py, planetRadius, sunAngleFromPosition + Math.PI / 2, sunAngleFromPosition + (3 * Math.PI) / 2);
+      orbitCtx.closePath();
+      orbitCtx.fill();
+      orbitCtx.strokeStyle = "#2a3d63";
+      orbitCtx.lineWidth = Math.max(1, Math.round(w * 0.006));
+      orbitCtx.beginPath();
+      orbitCtx.arc(px, py, planetRadius, 0, 2 * Math.PI);
+      orbitCtx.stroke();
+      orbitCtx.strokeStyle = "rgba(180, 200, 235, 0.75)";
+      orbitCtx.lineWidth = Math.max(1, Math.round(w * 0.004));
+      orbitCtx.beginPath();
+      orbitCtx.moveTo(px - planetRadius * Math.sin(sunAngleFromPosition), py + planetRadius * Math.cos(sunAngleFromPosition));
+      orbitCtx.lineTo(px + planetRadius * Math.sin(sunAngleFromPosition), py - planetRadius * Math.cos(sunAngleFromPosition));
+      orbitCtx.stroke();
+
+      if (localTimeVectorActive) {
+        const spinRotPerYear = parseFloat(axialSpinSlider.value) || 0;
+        const spinOmega = (2 * Math.PI * spinRotPerYear) / visualWindowSeconds;
+        const startAnomalyRad = degToRad(parseFloat(textureAnomalySlider.value) || 0);
+        const localAngle = Math.atan2(
+          Math.sin(localTimeOrbitBaseAngle + startAnomalyRad + spinOmega * (nowSeconds - localTimeOrbitBaseSeconds)),
+          Math.cos(localTimeOrbitBaseAngle + startAnomalyRad + spinOmega * (nowSeconds - localTimeOrbitBaseSeconds))
+        );
+        const localLen = planetRadius * 2.3;
+        const tipX = px + Math.cos(localAngle) * localLen;
+        const tipY = py + Math.sin(localAngle) * localLen;
+        orbitCtx.strokeStyle = "#ff3ac6";
+        orbitCtx.lineWidth = Math.max(2, Math.round(w * 0.012));
+        orbitCtx.beginPath();
+        orbitCtx.moveTo(px, py);
+        orbitCtx.lineTo(tipX, tipY);
+        orbitCtx.stroke();
+        const lagLead = Math.atan2(
+          Math.sin(localAngle - sunAngleFromPosition),
+          Math.cos(localAngle - sunAngleFromPosition)
+        );
+        const lagLeadDeg = (lagLead * 180) / Math.PI;
+        const lagLeadText = lagLeadDeg >= 0 ? `Lead +${lagLeadDeg.toFixed(1)}°` : `Lag ${lagLeadDeg.toFixed(1)}°`;
+        const normalX = -Math.sin(localAngle);
+        const normalY = Math.cos(localAngle);
+        const textX = tipX + normalX * 8;
+        const textY = tipY + normalY * 8;
+        orbitCtx.font = `${Math.max(10, Math.round(w * 0.06))}px "Space Grotesk", sans-serif`;
+        orbitCtx.textAlign = "left";
+        orbitCtx.textBaseline = "middle";
+        orbitCtx.strokeStyle = "rgba(7, 12, 24, 0.95)";
+        orbitCtx.lineWidth = Math.max(2, Math.round(w * 0.012));
+        orbitCtx.strokeText(lagLeadText, textX, textY);
+        orbitCtx.fillStyle = "#ff3ac6";
+        orbitCtx.fillText(lagLeadText, textX, textY);
+      }
+
+      orbitCtx.fillStyle = "#c7d4ef";
+      orbitCtx.font = `${Math.max(10, Math.round(w * 0.065))}px "Space Grotesk", sans-serif`;
+      orbitCtx.textAlign = "left";
+      orbitCtx.textBaseline = "top";
+      orbitCtx.fillText("Year Orbit", 8, 6);
+      orbitCtx.fillText(`e=${eccentricity.toFixed(2)}`, 8, 22);
+      orbitCtx.fillText(`Year ${(phase * yearDays).toFixed(2)} / ${yearDays.toFixed(1)}`, 8, h - Math.max(14, Math.round(w * 0.09)));
+    }
+
+    function updateSelectionLabel(cosValue) {
+      const clamped = Math.max(-1, Math.min(1, cosValue));
+      const normalized = Math.max(0, clamped);
+      const shade = Math.round(normalized * 255);
+      const color = `rgb(${shade}, ${shade}, ${shade})`;
+      labelCtx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+      labelCtx.fillStyle = "rgba(5, 8, 18, 0.7)";
+      labelCtx.fillRect(0, 0, labelCanvas.width, labelCanvas.height);
+      labelCtx.fillStyle = color;
+      labelCtx.font = "bold 28px 'Space Grotesk', sans-serif";
+      labelCtx.textAlign = "center";
+      labelCtx.textBaseline = "middle";
+      const lightStr = `Light ${Math.max(0, clamped).toFixed(2)}`;
+      let timeStr = lightStr;
+      if (Number.isFinite(lastClickedLocalTimeHours)) {
+        const wrapped = ((lastClickedLocalTimeHours % 24) + 24) % 24;
+        const minuteDistanceToNoon = Math.abs(wrapped - 12) * 60;
+        const noonSuffix = minuteDistanceToNoon < 0.5 ? " (noon)" : "";
+        timeStr = `${formatClockTime(lastClickedLocalTimeHours)}${noonSuffix} · ${lightStr}`;
+      }
+      labelCtx.fillText(timeStr, labelCanvas.width / 2, labelCanvas.height / 2);
+      labelTexture.needsUpdate = true;
+      selectionDot.material.color.setRGB(normalized, normalized, normalized);
+    }
+
+    function onPointer(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(pointer, camera);
+      const hits = raycaster.intersectObject(sphere, false);
+      if (!hits.length) return;
+      const frontHits = hits.filter((hit) => {
+        if (!hit.face) return true;
+        const worldNormal = hit.face.normal.clone().transformDirection(sphere.matrixWorld);
+        return worldNormal.dot(raycaster.ray.direction) < 0;
+      });
+      const chosenHit = (frontHits.length ? frontHits : hits)[0];
+
+      const localPoint = sphere.worldToLocal(chosenHit.point.clone()).normalize();
+      selectedLat = radToDeg(Math.asin(localPoint.y));
+      selectedLon = radToDeg(Math.atan2(localPoint.z, localPoint.x));
+      selectedLocal = localPoint;
+      selectionDot.position.copy(localPoint).multiplyScalar(1.01);
+      labelSprite.position.copy(localPoint).multiplyScalar(1.12);
+      const nowSeconds = getSimulationTimeSeconds();
+      const obliquityValue = parseFloat(obliquityInput.value);
+      const coneDeg = Math.max(-90, Math.min(90, Number.isFinite(obliquityValue) ? obliquityValue : 0));
+      const obliquityRad = degToRad(coneDeg);
+      const orbitState = getOrbitState(nowSeconds);
+      const selectedLongitude = Math.atan2(localPoint.z, localPoint.x);
+      const subsolarLongitude = getSubsolarLongitudeLocal(sphere.quaternion);
+      const hourAngle = Math.atan2(
+        Math.sin(selectedLongitude - subsolarLongitude),
+        Math.cos(selectedLongitude - subsolarLongitude)
+      );
+      localTimeClockBaseHours = 12 + (hourAngle * 12) / Math.PI;
+      localTimeClockBaseSeconds = nowSeconds;
+      lastClickedLocalTimeHours = localTimeClockBaseHours;
+      localTimeLongitudeOffset = Math.atan2(
+        Math.sin(selectedLongitude - subsolarLongitude - orbitState.leadLag),
+        Math.cos(selectedLongitude - subsolarLongitude - orbitState.leadLag)
+      );
+      localTimeLatitudeY = Math.max(-0.999, Math.min(0.999, localPoint.y));
+      localTimeLatitudeXZ = Math.sqrt(Math.max(0.0001, 1 - localTimeLatitudeY * localTimeLatitudeY));
+      localTimeVectorActive = true;
+      updateLocalTimeVector(nowSeconds);
+      const startAnomalyRad = degToRad(parseFloat(textureAnomalySlider.value) || 0);
+      const currentLocalVectorAngle = Math.atan2(localTimeVectorWorld.y, localTimeVectorWorld.x);
+      localTimeOrbitBaseAngle = Math.atan2(
+        Math.sin(currentLocalVectorAngle - startAnomalyRad + Math.PI),
+        Math.cos(currentLocalVectorAngle - startAnomalyRad + Math.PI)
+      );
+      localTimeOrbitBaseSeconds = nowSeconds;
+      resetSimulationForSelection(nowSeconds, obliquityRad);
+      updateLocalTimeVector(nowSeconds);
+    }
+
+    viewport3d.addEventListener("pointerdown", onPointer);
+    function animate() {
+      const obliquityValue = parseFloat(obliquityInput.value);
+      const coneDeg = Math.max(-90, Math.min(90, Number.isFinite(obliquityValue) ? obliquityValue : 0));
+      const obliquityRad = degToRad(coneDeg);
+      const elapsedSeconds = getSimulationTimeSeconds();
+      updateBaseOrientation(obliquityRad, elapsedSeconds);
+      const thermalDeltaSeconds = elapsedSeconds - lastThermalUpdateSeconds;
+      lastThermalUpdateSeconds = elapsedSeconds;
+      const finalQuat = getOrientationAtTime(elapsedSeconds, obliquityRad);
+      sphere.quaternion.copy(finalQuat);
+      grid.quaternion.copy(finalQuat);
+      updateLocalTimeVector(elapsedSeconds);
+      updateTerminatorRing();
+      drawOrbitMini(elapsedSeconds);
+      const poleDir = new THREE.Vector3(0, 1, 0).applyQuaternion(finalQuat).normalize();
+      poleArrow.position.copy(poleDir);
+      poleArrow.setDirection(poleDir);
+      updateSurfaceTemperature(finalQuat, thermalDeltaSeconds);
+      const lightAmount = Math.max(0, selectedLocal.clone().applyQuaternion(finalQuat).normalize().dot(sunDirection));
+      if (plotState && elapsedSeconds - plotState.startTime >= plotState.windowSeconds) {
+        computeCycle();
+      } else {
+        drawPlot(elapsedSeconds, lightAmount);
+        drawSunPathDiagram(elapsedSeconds, lightAmount);
+      }
+      updateSelectionLabel(lightAmount);
+      drawTerrainDrawerGuides();
+      if (viewMode === "sunlight") updateSunlightTexture();
+      controls.update();
+      renderer.render(scene, camera);
+      requestAnimationFrame(animate);
+    }
+
+    applyViewMode();
+    computeCycle();
+    updateTerminatorRing();
+    updatePauseButtonLabel();
+    drawOrbitMini(getSimulationTimeSeconds());
+    updateSurfaceTemperature(sphere.quaternion, 0.016);
+    lastThermalUpdateSeconds = getSimulationTimeSeconds();
+    animate();
+  </script>
+</body>
+</html>
